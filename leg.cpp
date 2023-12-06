@@ -63,103 +63,91 @@ int StepPath::appendPoint(StepPoint newPoint)
     return 0;
 }
 
-int StepPath::appendPoint(float x, float y, bool rapidTo)
+int StepPath::appendPoint(float aPosition, float angle, bool rapid)
 {
-    StepPoint newPoint(x, y, rapidTo);
+    StepPoint newPoint(aPosition, angle, rapid);
     appendPoint(newPoint);
 }
 
-void Leg::setAPosition(int newAPosition)
+void Leg::setAAngle(int newAAngle)
 {
-    aServoPosition = clamp(newAPosition, minServoPosition, maxServoPosition);
-    A.write(aServoPosition);
+    aServoAngle = clamp(newAAngle, minServoAngle, maxServoAngle);
+    A.write(aServoAngle);
 
     // Serial.print("A: ");
     // Serial.println(aServoPosition);
 }
 
-void Leg::setBPosition(int newBPosition)
+void Leg::setBAngle(int newBAngle)
 {
-    bServoPosition = clamp(newBPosition, minServoPosition, maxServoPosition);
-    B.write(bServoPosition);
+    bServoAngle = clamp(newBAngle, minServoAngle, maxServoAngle);
+    B.write(bServoAngle);
+
     
     // Serial.print("B: ");
     // Serial.println(bServoPosition);
 }
 
-void Leg::setXYActual(float x, float y)
-{
-    if (legLength > 0) x = clamp(x, -legLength, legLength);
-    else x = clamp(x, legLength, -legLength);
-
-    float theta = asin(x / legLength); // in radians
-    theta = clamp(theta, minTheta, maxTheta);
-
-    float centerHeight = y + legLength * cos(theta);
-
-    // Serial.print(theta);
-    // Serial.print(" ");
-    // Serial.println(centerHeight);
-
-    // Height of the a and b racks in mm
-    float aHeightmm = centerHeight + legGearRadius * theta;
-    aHeightmm = clamp(aHeightmm, minRackHeightmm, maxRackHeightmm);
-    
-    float bHeightmm = centerHeight - legGearRadius * theta;
-    bHeightmm = clamp(bHeightmm, minRackHeightmm, maxRackHeightmm);
-
-    // Height of the a and b racks in servo side teeth
-    float aHeight = aHeightmm / (servoGearModulus * PI);
-    float bHeight = bHeightmm / (servoGearModulus * PI);
-
-    setAPosition( aHeight / servoGearTeeth * 360 + aMiddle );
-    setBPosition( -bHeight / servoGearTeeth * 360 + bMiddle );
+void Leg::setARackPosition(float newARackPosition) {
+    aRackPosition_mm = clamp(newARackPosition, minRackPosition_mm, maxRackPosition_mm);
+    aServoAngle = aRackPosition_mm / maxRackPosition_mm * 180;
+    setAAngle(aServoAngle);
 }
 
-void Leg::begin(int APin, int BPin, int tAMiddle, int tBMiddle, StepPath* tPath)
+void Leg::setBRackPosition(float newBRackPosition) {
+    bRackPosition_mm = clamp(newBRackPosition, minRackPosition_mm, maxRackPosition_mm);
+    bServoAngle = bRackPosition_mm / maxRackPosition_mm * 180;
+    setBAngle(bServoAngle);
+}
+
+float Leg::calculateBPosition(float aPosition, float angle) {
+    float bPosition = aPosition;
+    float bToothOffsetFromA = legGearTeeth * angle / 360;
+    float bPositionOffsetFromA = bToothOffsetFromA * rackGearModulus * PI;
+    bPosition += bPositionOffsetFromA;
+    bPosition = clamp(bPosition, minRackPosition_mm, maxRackPosition_mm);
+
+    return bPosition;
+}
+
+void Leg::setALegAngle(float aPosition_mm, float angle)
 {
+    aPosition_mm = clamp(aPosition_mm, minRackPosition_mm, maxRackPosition_mm);
+    setARackPosition(aPosition_mm);
+
+    setBRackPosition(calculateBPosition(aPosition_mm, angle));
+
+}
+
+void Leg::begin(int APin, int BPin, StepPath* tPath)
+{
+
 
     A.attach(APin);
     B.attach(BPin);
-
-    aMiddle = tAMiddle;
-    setAPosition(aMiddle);
-
-
-    bMiddle = tBMiddle;
-    setBPosition(bMiddle);
+    
+    aRackPosition_mm = stoppedAPosition;
+    currentAngle = stoppedAngle;
+    bRackPosition_mm = calculateBPosition(aRackPosition_mm, currentAngle);
 
     legGearRadius = legGearModulus * legGearTeeth;
 
     path = tPath;
 
-    currentPosition = path->getPoint(&nextPointIndex).position;
-
     // Serial.print("Position1: ");
     // Serial.print(currentPosition.x);
     // Serial.print(" ");
-    // Serial.println(currentPosition.y);
+    // Serial.  println(currentPosition.y);
 
-    updateTarget();
-
-}
-
-void Leg::setXY(float x, float y)
-{
-    setXYActual(x, y);
-    mode = position;
 }
 
 void Leg::setSpeed(float newSpeed)
 {
-    if (mode == velocity)
-    {
-        speed = newSpeed;
-    }
-    else
-    {
-        mode = velocity;
-        speed = newSpeed;
+    speed = clamp(newSpeed, -1.0, 1.0);
+    if (newSpeed >= 0) {
+        setForwards();
+    } else {
+        setBackwards();
     }
 }
 
@@ -170,109 +158,86 @@ void Leg::setStepPath(StepPath* newPath)
 
 void Leg::updateTarget()
 {
-    target = path->getPoint(&nextPointIndex);
+    setARackPosition(targetAPosition);
+    setBRackPosition(targetBPosition);
 
-    if (!upsideUp)
-    {
-        target.position.y *= -1;
-    } //Flawed
-
-
-    Vector2d dPosition = target.position.subtract(currentPosition);
-    
-
-    
-    directionToTarget = dPosition.unit();
-    distanceToTarget = dPosition.length();
-
-    if (forwards)
-    {
-        rapid = target.rapid;
-    }
-    else{
-        int temp = nextPointIndex + 1;
-        rapid = path->getPoint(&temp).rapid;
-    }
-
-    nextPointIndex += indexDirection;
-}
-
-void Leg::update(float dt)
-{
     switch (mode)
     {
-    case velocity:
-        // Serial.print("Position2: ");
-        // Serial.print(currentPosition.x);
-        // Serial.print(" ");
-        // Serial.println(currentPosition.y);
-        if (distanceToTarget <= 0)
-        {
-            updateTarget();
-        }
-        if (rapid)
-        {
-            distanceToTarget -= rapidSpeed * dt;
-            currentPosition = currentPosition.add( directionToTarget.multiply(rapidSpeed * dt) );
-        }
-        else
-        {
-            distanceToTarget -= speed * dt;
-            currentPosition = currentPosition.add( directionToTarget.multiply(speed * dt) );
-
-        }
-
-        // Serial.print("Position: ");
-        // Serial.print(currentPosition.x);
-        // Serial.print(" ");
-        // Serial.print(currentPosition.y);
-        // Serial.print(" Point Index: ");
-        // Serial.print(nextPointIndex);
-        // Serial.println();
-        setXYActual(currentPosition.x, currentPosition.y);
-        break;
-    case position:
+    case(stopped):
 
         break;
-    
-    case none:
+    case(walking):
+        
+        StepPoint target = path->getPoint(&nextPointIndex);
+
+        if (forwards)
+        {
+            rapiding = target.rapid;
+            nextPointIndex ++;
+        }
+        else{
+            int temp = nextPointIndex + 1;
+            rapiding = path->getPoint(&temp).rapid;
+            nextPointIndex --;
+        }        
+        
+        break;
+    case(stopping):
+
+        targetAPosition = stoppedAPosition;
+        targetAngle = stoppedAngle;
+        targetBPosition = calculateBPosition(targetAPosition, targetAngle);
+        
+        mode = stopped;
+
         break;
     default:
         break;
     }
-
-
+    
 }
 
-void Leg::flip()
+void Leg::update(float dt)
 {
-    upsideUp = !upsideUp;
+    float da = targetAPosition - aRackPosition_mm;
+    float db = targetBPosition - bRackPosition_mm;
 
-    legLength *= -1;
-
-    nextPointIndex = 0;
-
-
-    currentPosition = path->getPoint(&nextPointIndex).position;
-
-    if (!upsideUp)
-    {
-        currentPosition.y *= -1;
+    float currentRackSpeed = maxRackSpeed_mmPs;
+    if (!rapiding) {
+        currentRackSpeed *= speed;
     }
 
+    float rackMovement = currentRackSpeed * dt;
 
-    updateTarget();
-
-    
-
+    if (da > db) {
+        setARackPosition(aRackPosition_mm + rackMovement);
+        float bMovement = rackMovement / da * db;
+        setBRackPosition(bRackPosition_mm + bMovement);
+    } else {
+        setBRackPosition(bRackPosition_mm + rackMovement);
+        float aMovement = rackMovement / db * da;
+        setBRackPosition(aRackPosition_mm + aMovement);
+    }
 }
 
-void Leg::reverse()
+void Leg::setForwards()
 {
-    forwards = !forwards;
-    indexDirection *= -1;
+    if (!forwards) {
+        forwards = true;
 
-    nextPointIndex += 2 * indexDirection;
+        nextPointIndex += 2;
 
-    updateTarget();
+        updateTarget();
+    } 
+}
+
+void Leg::setBackwards()
+{
+    if (forwards) {
+        forwards = false;
+
+        nextPointIndex -= 2;
+
+        updateTarget();
+    } 
 }

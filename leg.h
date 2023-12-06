@@ -4,25 +4,26 @@
 
 #include "Vector2d.h"
 
-#define PI 3.1416
 
 
 
 class StepPoint
 {
   public:
-    Vector2d position;
-    bool rapid;
+    float aPosition;
+    float angle;
+    bool rapid; //Rapids to this point in forward or from this point in reverse
+
     StepPoint() {;}
-    StepPoint(float x, float y, bool rapid)
-    : position(x, y), rapid(rapid) {;}
+    StepPoint(float aPosition, float angle, bool rapid)
+      : aPosition{aPosition}, angle{angle}, rapid(rapid) {;}
 
 };
 
 
 class StepPath
 {
-    static constexpr int maxPointCount = 10;
+    static constexpr int maxPointCount = 4;
 
     int currentPointCount = 0;
 
@@ -34,83 +35,93 @@ class StepPath
     StepPath() {;}
     StepPoint getPoint(int* index);
     int appendPoint(StepPoint newPoint);
-    int appendPoint(float x, float y, bool rapidTo);
+    int appendPoint(float aPosition, float angle, bool rapid);
 
 };
 
 class Leg
 {
     enum Modes {
-      none,
-      position,
-      velocity
+      stopped,
+      walking,
+      stopping
     };
+
+    Modes mode = stopped;
+
 
     Servo A;
     Servo B;
 
-    Vector2d currentPosition;
+    float stoppedAPosition = 20;
+    float stoppedAngle = 30;
 
-    int aServoPosition;
-    int aMiddle; //Angle when rack is centered
+    float currentAngle = stoppedAngle;
 
-    int bServoPosition;
-    int bMiddle; //Angle when rack is centered
+    int aServoAngle;
+    float aRackPosition_mm;
 
-    int minServoPosition = 0;
-    int maxServoPosition = 180;
+    int bServoAngle;
+    float bRackPosition_mm;
 
-    float minTheta = -0.5;
-    float maxTheta = 0.5;
+    float rackGearModulus = 1; //Modulus of the rack
 
-    float minRackHeightmm = -10;
-    float maxRackHeightmm = 10;
 
-    float legLength = 30;
-    int legGearTeeth = 8; //Number of teeth of the gear attached to the leg
-    float legGearModulus = 1.25; //Modulus of the gear attached to the leg
+    int minServoAngle = 0;
+    int maxServoAngle = 180;
+
+    float minRackPosition_mm = 0;
+    float maxRackPosition_mm = 12.5 * PI;
+    int legGearTeeth = 10; //Number of teeth of the gear attached to the leg
+    float legGearModulus = 1; //Modulus of the gear attached to the leg
     float legGearRadius;
 
-    int servoGearTeeth = 12;
-    float servoGearModulus = 1.25;
+    int servoGearTeeth = 25;
+    float servoGearModulus = 1;
     
-    float rapidSpeed = 50;
-    float speed;
+    float maxServoSpeed_degPs = 600;
+    float maxRackSpeed_mmPs = maxServoSpeed_degPs / 260 * 25 * PI;
+    
+    float speed = 0; //0 to 1
 
-    bool rapid;
+    bool rapiding;
 
-    StepPoint target;
+    float targetAPosition;
+    float targetBPosition;
+    float targetAngle;
+
     int nextPointIndex = 0;
-    float distanceToTarget;
-    Vector2d directionToTarget;
+
 
 
     StepPath* path;
-    Modes mode = none;
-
-    bool upsideUp = true; //1 for up 1 for down
-
     
     bool forwards = true;
-    int indexDirection = 1;
 
 
-    void setAPosition(int newAPosition);
-    void setBPosition(int newBPosition);
-    void setXYActual(float x, float y);
+    void setAAngle(int newAAngle);
+    void setBAngle(int newBAngle);
+
+    void setARackPosition(float newARackPosition);
+    void setBRackPosition(float newBRackPosition);
+
     void updateTarget();
+
+    float calculateBPosition(float aPosition, float angle);
 
   public:
 
     Leg() {;}
-    void begin(int APin, int BPin, int tAMiddle, int tBMiddle, StepPath* tPath);
-    void setXY(float x, float y);
-    void setSpeed(float newSpeed);
+    void begin(int APin, int BPin, StepPath* tPath);
+    void setALegAngle(float aPosition, float angle);
+    void setSpeed(float newSpeed); //0 to 1 of max
     void setStepPath(StepPath* newPath);
     void update(float dt);
 
-    void flip();
-    void reverse();
+    void setForwards();
+    void setBackwards();
+    void stop();
+    void start();
 };
 
 
