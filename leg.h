@@ -4,7 +4,7 @@
 
 #include "Vector2d.h"
 
-
+#define PI 3.1416
 
 
 class StepPoint
@@ -72,14 +72,14 @@ class Leg
 
     float minRackPosition_mm = 0;
     float maxRackPosition_mm = 12.5 * PI;
-    int legGearTeeth = 10; //Number of teeth of the gear attached to the leg
+    int legGearTeeth = 12; //Number of teeth of the gear attached to the leg
     float legGearModulus = 1; //Modulus of the gear attached to the leg
     float legGearRadius;
 
     int servoGearTeeth = 25;
     float servoGearModulus = 1;
     
-    float maxServoSpeed_degPs = 600;
+    float maxServoSpeed_degPs = 200;//600;
     float maxRackSpeed_mmPs = maxServoSpeed_degPs / 260 * 25 * PI;
     
     float speed = 0; //0 to 1

@@ -5,26 +5,27 @@ Leg test;
 
 StepPath path;
 unsigned long prevMicros = 0;
-float x = -10;
 
 
 // Servo testS;
 
-float tipSpeed = 10; // mm/s
 
 bool goingPositive = true;
 
 void setup(){
-    path.appendPoint(-10, -30, true);
-    path.appendPoint(10, -30, false);
-    path.appendPoint(10, -25, true);
-    path.appendPoint(-10, -25, true);
+    path.appendPoint(0, 0, false);
+    path.appendPoint(0, 90, true);
+    path.appendPoint(30, 90, true);
+    path.appendPoint(40, 0, true);
+
 
     pinMode(13, OUTPUT);
     Serial.begin(9600);
-    test.begin(9, 10, 110, 90, &path);
+    test.begin(9, 10, &path);
 
-    test.setSpeed(10);
+    test.setSpeed(0/8);
+    test.setSpeed(.2);
+    test.start();
     
 }
 
@@ -34,19 +35,7 @@ void loop(){
     dt /= 1000000.0;
 
 
-    if (prevMicros / 5000000  != newMicros / 5000000)
-    {
-        test.reverse();
-        Serial.println("Reverse");
-    }
 
-    if (prevMicros / 10000000  != newMicros / 10000000)
-    {
-        test.flip();
-        Serial.println("Flip");
-    }
-
-    // Serial.println(dt, 6);
     test.update(dt);
 
     prevMicros = newMicros;

@@ -3,25 +3,18 @@
 
 #include "leg.h"
 
+int sign(int num) {
+    if (num > 0) {
+        return 1;
+    } else if (num < 0) {
+        return -1;
+    } else return 0;
+}
+
 static int clamp(int value, int min, int max)
 {
-    if (value < min)
-    {
-        Serial.print("Clamped ");
-        Serial.print(value);
-        Serial.print(" to ");
-        Serial.println(min);
-
-        return min;
-    }
-    else if (value > max)
-    {
-        Serial.print("Clamped ");
-        Serial.print(value);
-        Serial.print(" to ");
-        Serial.println(max);
-        return max;
-    }
+    if (value < min) return min;
+    else if (value > max) return max;
     else return value;
 }
 static float clamp(float value, float min, float max)
@@ -73,19 +66,12 @@ void Leg::setAAngle(int newAAngle)
 {
     aServoAngle = clamp(newAAngle, minServoAngle, maxServoAngle);
     A.write(aServoAngle);
-
-    // Serial.print("A: ");
-    // Serial.println(aServoPosition);
 }
 
 void Leg::setBAngle(int newBAngle)
 {
     bServoAngle = clamp(newBAngle, minServoAngle, maxServoAngle);
     B.write(bServoAngle);
-
-    
-    // Serial.print("B: ");
-    // Serial.println(bServoPosition);
 }
 
 void Leg::setARackPosition(float newARackPosition) {
@@ -96,7 +82,7 @@ void Leg::setARackPosition(float newARackPosition) {
 
 void Leg::setBRackPosition(float newBRackPosition) {
     bRackPosition_mm = clamp(newBRackPosition, minRackPosition_mm, maxRackPosition_mm);
-    bServoAngle = bRackPosition_mm / maxRackPosition_mm * 180;
+    bServoAngle = 180 - bRackPosition_mm / maxRackPosition_mm * 180;
     setBAngle(bServoAngle);
 }
 
@@ -106,7 +92,7 @@ float Leg::calculateBPosition(float aPosition, float angle) {
     float bPositionOffsetFromA = bToothOffsetFromA * rackGearModulus * PI;
     bPosition += bPositionOffsetFromA;
     bPosition = clamp(bPosition, minRackPosition_mm, maxRackPosition_mm);
-
+    // Serial.println(bPositionOffsetFromA);
     return bPosition;
 }
 
@@ -129,6 +115,9 @@ void Leg::begin(int APin, int BPin, StepPath* tPath)
     aRackPosition_mm = stoppedAPosition;
     currentAngle = stoppedAngle;
     bRackPosition_mm = calculateBPosition(aRackPosition_mm, currentAngle);
+
+    targetAPosition = aRackPosition_mm;
+    targetBPosition = bRackPosition_mm;
 
     legGearRadius = legGearModulus * legGearTeeth;
 
@@ -158,8 +147,6 @@ void Leg::setStepPath(StepPath* newPath)
 
 void Leg::updateTarget()
 {
-    setARackPosition(targetAPosition);
-    setBRackPosition(targetBPosition);
 
     switch (mode)
     {
@@ -169,6 +156,9 @@ void Leg::updateTarget()
     case(walking):
         
         StepPoint target = path->getPoint(&nextPointIndex);
+        targetAPosition = target.aPosition;
+        targetAngle = target.angle;
+        targetBPosition = calculateBPosition(targetAPosition, targetAngle);
 
         if (forwards)
         {
@@ -188,6 +178,8 @@ void Leg::updateTarget()
         targetAngle = stoppedAngle;
         targetBPosition = calculateBPosition(targetAPosition, targetAngle);
         
+        rapiding = true;
+
         mode = stopped;
 
         break;
@@ -199,25 +191,67 @@ void Leg::updateTarget()
 
 void Leg::update(float dt)
 {
+
     float da = targetAPosition - aRackPosition_mm;
     float db = targetBPosition - bRackPosition_mm;
 
     float currentRackSpeed = maxRackSpeed_mmPs;
+    
     if (!rapiding) {
         currentRackSpeed *= speed;
     }
 
     float rackMovement = currentRackSpeed * dt;
 
-    if (da > db) {
-        setARackPosition(aRackPosition_mm + rackMovement);
-        float bMovement = rackMovement / da * db;
-        setBRackPosition(bRackPosition_mm + bMovement);
+    bool complete = false;
+
+    //Following doesnt work at all.. needs rerwrite
+    float movement = -10;
+    if (abs(da) < rackMovement and abs(db) < rackMovement) {
+            setARackPosition(targetAPosition);
+            setBRackPosition(targetBPosition);
+            updateTarget();
+    } else if (abs(da) > abs(db)) {
+        setARackPosition(aRackPosition_mm + rackMovement * sign(da));
+        movement = rackMovement / abs(da) * db;
+
+
+        setBRackPosition(bRackPosition_mm + movement);
     } else {
-        setBRackPosition(bRackPosition_mm + rackMovement);
-        float aMovement = rackMovement / db * da;
-        setBRackPosition(aRackPosition_mm + aMovement);
+        setBRackPosition(bRackPosition_mm + rackMovement * sign(db));
+        movement = rackMovement / abs(db) * da;
+
+
+        setARackPosition(aRackPosition_mm + movement);
     }
+
+
+    
+
+    // Serial.print("A: ");
+    // Serial.print(aRackPosition_mm);
+    // Serial.print(" B: ");
+    // Serial.print(bRackPosition_mm);    
+    // Serial.print(" Mode: ");
+    // Serial.print(mode);
+    // Serial.print(" Target A: ");
+    // Serial.print(targetAPosition);
+    // Serial.print(" target B: ");
+    // Serial.print(targetBPosition);
+
+    // Serial.println();
+
+    Serial.print(aRackPosition_mm);
+    Serial.print(" ");
+    Serial.print(bRackPosition_mm);
+    Serial.print(" ");
+    Serial.print(targetAPosition);
+    Serial.print(" ");
+    Serial.print(targetBPosition);
+    Serial.print(" ");
+    Serial.print(nextPointIndex * 10);
+
+    Serial.println();
 }
 
 void Leg::setForwards()
@@ -240,4 +274,24 @@ void Leg::setBackwards()
 
         updateTarget();
     } 
+}
+
+void Leg::stop() {
+    if (mode == walking) {
+        mode = stopping;
+        targetAPosition = aRackPosition_mm;
+        targetAngle = 30;
+        targetBPosition = calculateBPosition(targetAPosition, targetAngle);
+    }
+
+}
+
+void Leg::start() {
+    if (mode != walking) {
+        rapiding = true;
+        mode = walking;
+        targetAPosition = aRackPosition_mm;
+        targetAngle = 0;
+        targetBPosition = calculateBPosition(targetAPosition, targetAngle);
+    }    
 }
