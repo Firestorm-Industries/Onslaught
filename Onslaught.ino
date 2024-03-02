@@ -14,8 +14,8 @@ bool goingPositive = true;
 
 void setup(){
     path.appendPoint(0, 0, false);
-    path.appendPoint(0, 90, true);
-    path.appendPoint(30, 90, true);
+    path.appendPoint(0, 120, true);
+    path.appendPoint(30, 120, true);
     path.appendPoint(40, 0, true);
 
 
@@ -23,7 +23,6 @@ void setup(){
     Serial.begin(9600);
     test.begin(9, 10, &path);
 
-    test.setSpeed(0/8);
     test.setSpeed(.2);
     test.start();
     

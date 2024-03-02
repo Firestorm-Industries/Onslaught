@@ -79,7 +79,7 @@ class Leg
     int servoGearTeeth = 25;
     float servoGearModulus = 1;
     
-    float maxServoSpeed_degPs = 200;//600;
+    float maxServoSpeed_degPs = 600;//600;
     float maxRackSpeed_mmPs = maxServoSpeed_degPs / 260 * 25 * PI;
     
     float speed = 0; //0 to 1
